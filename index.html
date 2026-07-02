@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pogoda - Wydminy 3D</title>
+    <!-- THREE.JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        :root {
+            --glass-bg: rgba(50, 60, 90, 0.3);
+            --glass-border: rgba(255, 255, 255, 0.15);
+            --text-main: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --bar-bg: rgba(0, 0, 0, 0.2);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-main);
+            background: #000;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden; 
+            perspective: 1500px;
+        }
+
+        /* The 3D Canvas covers everything inside the phone */
+        #weather-canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 0;
+            pointer-events: none;
+            border-radius: inherit;
+        }
+
+        .layout {
+            display: flex;
+            gap: 40px;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            max-width: 1200px;
+            padding: 20px;
+        }
+
+        /* --- PHONE CONTAINER --- */
+        .phone-container {
+            width: 100%;
+            height: 100vh;
+            max-width: 430px;
+            position: relative;
+            overflow-y: auto;
+            overflow-x: hidden;
+            background: #1a2a40;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.8), inset 0 0 0 1px rgba(255,255,255,0.1);
+            scrollbar-width: none;
+            transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+            transform-style: preserve-3d;
+        }
+        
+        @media (min-width: 431px) {
+            .phone-container {
+                height: 850px;
+                max-height: 90vh;
+                border-radius: 45px;
+                border: 12px solid #000;
+                padding-top: 10px;
+                flex-shrink: 0;
+                box-shadow: 0 30px 60px rgba(0,0,0,0.6), inset 0 0 0 2px rgba(255,255,255,0.1);
+            }
+        }
+
+        .phone-container::-webkit-scrollbar { display: none; }
+
+        @keyframes hurricaneShake {
+            0% { transform: translate(2px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(0px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(2px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(2px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+        .hurricane-shake { animation: hurricaneShake 0.3s infinite; }
+
+        /* --- CONTENT ON TOP OF 3D --- */
+        .content-wrapper {
+            position: relative;
+            z-index: 3;
+            padding: 55px 20px 110px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            transform: translateZ(20px); 
+        }
+
+        /* Header Section */
+        .main-header {
+            text-align: center;
+            margin-bottom: 25px;
+            text-shadow: 0 2px 15px rgba(0, 0, 0, 0.6);
+            animation: fadeInDown 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .location-tag {
+            font-size: 13px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            margin-bottom: 2px;
+        }
+
+        .city {
+            font-size: 36px;
+            font-weight: 400;
+            letter-spacing: 0.5px;
+            margin-bottom: -5px;
+        }
+
+        .temperature {
+            font-size: 100px;
+            font-weight: 200;
+            line-height: 1;
+            margin-left: 20px;
+            letter-spacing: -3px;
+            text-shadow: 0 5px 25px rgba(0,0,0,0.5);
+        }
+
+        .condition {
+            font-size: 21px;
+            font-weight: 500;
+            margin-bottom: 3px;
+            transition: all 0.5s ease;
+        }
+
+        .high-low { font-size: 21px; font-weight: 500; }
+
+        /* Glass Widget Base */
+        .glass-widget {
+            background: var(--glass-bg);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border-radius: 18px;
+            padding: 16px;
+            border: 0.5px solid var(--glass-border);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(255,255,255,0.05);
+            animation: fadeInUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+            transition: background 1.5s ease;
+        }
+        
+        .glass-widget:nth-child(2) { animation-delay: 0.1s; }
+        .glass-widget:nth-child(3) { animation-delay: 0.2s; }
+
+        /* Hourly Forecast */
+        .hourly-desc {
+            font-size: 15px; font-weight: 500; line-height: 1.3; margin-bottom: 12px; padding-bottom: 12px;
+            border-bottom: 0.5px solid var(--glass-border); transition: border-color 1.5s ease;
+        }
+
+        .hourly-scroll {
+            display: flex; gap: 26px; overflow-x: auto; scrollbar-width: none; padding: 5px 0;
+        }
+        .hourly-scroll::-webkit-scrollbar { display: none; }
+
+        .hour-block { display: flex; flex-direction: column; align-items: center; gap: 12px; min-width: 40px; }
+        .hour-time { font-size: 15px; font-weight: 600; }
+        .hour-icon { height: 28px; display: flex; align-items: center; justify-content: center; }
+        .hour-icon svg { width: 24px; height: 24px; filter: drop-shadow(0 2px 5px rgba(0,0,0,0.5)); transition: fill 0.5s;}
+        .hour-temp { font-size: 20px; font-weight: 500; }
+
+        /* 10-Day Forecast */
+        .ten-day-header {
+            font-size: 13px; font-weight: 600; color: var(--text-secondary); display: flex; align-items: center;
+            gap: 6px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;
+        }
+
+        .ten-day-header svg { width: 14px; height: 14px; opacity: 0.7;}
+
+        .day-row { display: flex; align-items: center; padding: 14px 0; border-bottom: 0.5px solid var(--glass-border); transition: border-color 1.5s ease;}
+        .day-row:last-child { border-bottom: none; padding-bottom: 0; }
+        .day-name { width: 50px; font-size: 20px; font-weight: 500; }
+        
+        .day-icon-col { width: 55px; display: flex; flex-direction: column; align-items: center; justify-content: center;}
+        .day-icon-col svg { width: 28px; height: 28px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); }
+        .pop { font-size: 12px; color: #87CEFA; font-weight: 700; margin-top: 1px; }
+
+        .day-low { width: 35px; text-align: right; font-size: 20px; font-weight: 500; color: var(--text-secondary); }
+        .day-bar-container { flex: 1; margin: 0 14px; height: 5px; background: var(--bar-bg); border-radius: 3px; position: relative; }
+        .day-bar-fill { position: absolute; height: 100%; border-radius: 3px; background: linear-gradient(90deg, #99c27f, #dfb957, #e89524); transition: width 1s ease, left 1s ease;}
+        .current-temp-dot { position: absolute; width: 5px; height: 5px; background: white; border-radius: 50%; top: 0; box-shadow: 0 0 0 3px #415270; z-index: 2; transition: left 1s ease;}
+        .day-high { width: 35px; text-align: right; font-size: 20px; font-weight: 500; }
+
+        /* Bottom Navigation */
+        .bottom-nav {
+            position: absolute; bottom: 0; left: 0; right: 0; height: 85px;
+            background: rgba(50, 60, 90, 0.4); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px);
+            border-top: 0.5px solid var(--glass-border); display: flex; justify-content: space-between; align-items: flex-start;
+            padding: 16px 28px; z-index: 10; transform: translateZ(30px);
+        }
+
+        @media (min-width: 431px) { .bottom-nav { border-bottom-left-radius: 30px; border-bottom-right-radius: 30px; } }
+        .nav-icon { cursor: pointer; transition: opacity 0.2s, transform 0.2s; }
+        .nav-icon:hover { transform: scale(1.1); }
+        .nav-icon svg { width: 30px; height: 30px; filter: drop-shadow(0 2px 5px rgba(0,0,0,0.2)); }
+        .page-dots { display: flex; align-items: center; gap: 7px; margin-top: 12px; }
+        .dot { width: 7px; height: 7px; background: rgba(255,255,255,0.3); border-radius: 50%; }
+        .dot.active { background: white; box-shadow: 0 0 8px white;}
+        .nav-arrow { margin-right: 3px; }
+        .nav-arrow svg { width: 14px; height: 14px; transform: rotate(-45deg); opacity: 0.9;}
+
+        /* --- CONTROLS PANEL --- */
+        .controls-wrapper { display: flex; gap: 20px; }
+        .controls { display: flex; flex-direction: column; gap: 12px; min-width: 260px; animation: fadeInRight 1s ease-out; perspective: 1000px; }
+        .controls h2 { font-size: 20px; font-weight: 300; margin-bottom: 5px; color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,0.5); letter-spacing: 1px; }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1); color: white; padding: 12px 20px; border-radius: 16px;
+            font-size: 16px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 12px;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+            text-align: left; position: relative; overflow: hidden;
+        }
+        
+        .control-btn::before {
+            content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
+            background: linear-gradient(to right, rgba(255,255,255,0), rgba(255,255,255,0.2), rgba(255,255,255,0));
+            transform: skewX(-20deg); transition: all 0.7s ease;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.15); transform: translateX(10px) translateZ(20px);
+            border-color: rgba(255, 255, 255, 0.4); box-shadow: 0 12px 30px rgba(0,0,0,0.3);
+        }
+        
+        .control-btn:hover::before { left: 200%; }
+        .control-btn.active {
+            background: linear-gradient(135deg, rgba(255,255,255,0.3), rgba(255,255,255,0.1));
+            border-color: rgba(255, 255, 255, 0.7); box-shadow: 0 0 35px rgba(255, 255, 255, 0.3);
+            transform: translateX(20px) scale(1.05);
+        }
+
+        .emoji { font-size: 24px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); }
+
+        @media (max-width: 800px) {
+            .layout { flex-direction: column; padding-bottom: 50px; }
+            .controls-wrapper { flex-direction: column; }
+            .controls { flex-direction: row; flex-wrap: wrap; justify-content: center; }
+            .controls h2 { width: 100%; text-align: center; }
+            .control-btn { padding: 15px 20px; width: 45%; font-size: 15px; }
+        }
+
+        @keyframes fadeInDown { from { opacity: 0; transform: translateY(-40px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeInRight { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+    </style>
+</head>
+<body>
+
+    <div class="layout">
+        <div class="phone-container" id="phone">
+            
+            <!-- 3D WEATHER CANVAS -->
+            <canvas id="weather-canvas"></canvas>
+            
+            <div class="content-wrapper">
+                <div class="main-header">
+                    <div class="location-tag">
+                        <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14" style="transform: rotate(45deg);"><path d="M21 3L3 10.533L9.568 12.432L11.467 19L19 3H21Z"/></svg>
+                        DOM
+                    </div>
+                    <h1 class="city">Wydminy</h1>
+                    <div class="temperature" id="temp-display">19&deg;</div>
+                    <div class="condition" id="cond-display">Głównie bez chmur</div>
+                    <div class="high-low" id="high-low-display">Od 17&deg; do 24&deg;</div>
+                </div>
+
+                <div class="glass-widget">
+                    <div class="hourly-desc" id="hourly-desc">Przyjemny, spokojny wieczór.</div>
+                    <div class="hourly-scroll">
+                        <div class="hour-block"><div class="hour-time">Teraz</div><div class="hour-icon" id="hour-icon-1"></div><div class="hour-temp" id="hour-temp-1">19&deg;</div></div>
+                        <div class="hour-block"><div class="hour-time">22</div><div class="hour-icon" id="hour-icon-2"></div><div class="hour-temp" id="hour-temp-2">19&deg;</div></div>
+                        <div class="hour-block"><div class="hour-time">23</div><div class="hour-icon" id="hour-icon-3"></div><div class="hour-temp" id="hour-temp-3">18&deg;</div></div>
+                        <div class="hour-block"><div class="hour-time">00</div><div class="hour-icon" id="hour-icon-4"></div><div class="hour-temp" id="hour-temp-4">17&deg;</div></div>
+                        <div class="hour-block"><div class="hour-time">01</div><div class="hour-icon" id="hour-icon-5"></div><div class="hour-temp" id="hour-temp-5">17&deg;</div></div>
+                        <div class="hour-block"><div class="hour-time">02</div><div class="hour-icon" id="hour-icon-6"></div><div class="hour-temp" id="hour-temp-6">16&deg;</div></div>
+                    </div>
+                </div>
+
+                <div class="glass-widget">
+                    <div class="ten-day-header">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                        PROGNOZA 10-DNIOWA
+                    </div>
+                    
+                    <div class="day-row">
+                        <div class="day-name">Dziś</div>
+                        <div class="day-icon-col" id="day-icon-1"></div>
+                        <div class="day-low" id="day-low-1">17&deg;</div>
+                        <div class="day-bar-container">
+                            <div class="day-bar-fill" style="left: 40%; width: 60%;" id="bar-1"></div>
+                            <div class="current-temp-dot" style="left: 60%;" id="dot-1"></div>
+                        </div>
+                        <div class="day-high" id="day-high-1">24&deg;</div>
+                    </div>
+
+                    <div class="day-row">
+                        <div class="day-name">Pt.</div>
+                        <div class="day-icon-col" id="day-icon-2">
+                            <div class="pop" id="pop-1">75%</div>
+                        </div>
+                        <div class="day-low" id="day-low-2">15&deg;</div>
+                        <div class="day-bar-container">
+                            <div class="day-bar-fill" style="left: 20%; width: 50%; background: linear-gradient(90deg, #99c27f, #dfb957);" id="bar-2"></div>
+                        </div>
+                        <div class="day-high" id="day-high-2">21&deg;</div>
+                    </div>
+
+                    <div class="day-row">
+                        <div class="day-name">Sob.</div>
+                        <div class="day-icon-col" id="day-icon-3">
+                            <div class="pop" id="pop-2">85%</div>
+                        </div>
+                        <div class="day-low" id="day-low-3">14&deg;</div>
+                        <div class="day-bar-container">
+                            <div class="day-bar-fill" style="left: 10%; width: 40%; background: linear-gradient(90deg, #7db37f, #99c27f);" id="bar-3"></div>
+                        </div>
+                        <div class="day-high" id="day-high-3">19&deg;</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Navigation -->
+            <div class="bottom-nav">
+                <div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"></polygon><line x1="9" y1="3" x2="9" y2="18"></line><line x1="15" y1="6" x2="15" y2="21"></line></svg></div>
+                <div class="page-dots"><div class="nav-arrow"><svg viewBox="0 0 24 24" fill="white"><path d="M21 3L3 10.533L9.568 12.432L11.467 19L19 3H21Z"/></svg></div><div class="dot active"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+                <div class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg></div>
+            </div>
+        </div>
+
+        <div class="controls-wrapper">
+            <div class="controls">
+                <h2>Klasyka</h2>
+                <button class="control-btn active" onclick="setWeather('clear', this)">
+                    <span class="emoji">🌙</span> Bez chmur
+                </button>
+                <button class="control-btn" onclick="setWeather('sunny', this)">
+                    <span class="emoji">☀️</span> Słonecznie
+                </button>
+                <button class="control-btn" onclick="setWeather('rain', this)">
+                    <span class="emoji">🌧️</span> Ulewa
+                </button>
+                <button class="control-btn" onclick="setWeather('snow', this)">
+                    <span class="emoji">❄️</span> Śnieżyca
+                </button>
+            </div>
+            
+            <div class="controls">
+                <h2>Ekstremalne 🌪️</h2>
+                <button class="control-btn" onclick="setWeather('storm', this)">
+                    <span class="emoji">⛈️</span> Burza
+                </button>
+                <button class="control-btn" onclick="setWeather('wind', this)">
+                    <span class="emoji">💨</span> Wicher
+                </button>
+                <button class="control-btn" onclick="setWeather('hurricane', this)">
+                    <span class="emoji">🌀</span> Huragan
+                </button>
+                <button class="control-btn" onclick="setWeather('tsunami', this)">
+                    <span class="emoji">🌊</span> Tsunami
+                </button>
+                <button class="control-btn" onclick="setWeather('tornado', this)">
+                    <span class="emoji">🌪️</span> Tornado
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 3D WEATHER ENGINE (THREE.JS) ---
+        let scene, camera, renderer;
+        let rainParticles, snowParticles, tornadoParticles, stormClouds;
+        let tsunamiMesh, sunMesh;
+        let flashLight;
+        let currentEffect = 'clear';
+
+        function initThree() {
+            const canvas = document.getElementById('weather-canvas');
+            // Allow alpha for CSS background fallback if desired, but we will paint backgrounds in 3D
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: false, antialias: true });
+            renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a2a40); // Default clear background
+
+            camera = new THREE.PerspectiveCamera(60, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+            camera.position.z = 50;
+
+            // Ambient light
+            scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+
+            // Flash light for storm
+            flashLight = new THREE.PointLight(0xffffff, 0, 500);
+            flashLight.position.set(0, 50, 0);
+            scene.add(flashLight);
+
+            // RAIN
+            const rainGeo = new THREE.BufferGeometry();
+            const rainCount = 15000;
+            const rainPos = new Float32Array(rainCount * 3);
+            for(let i=0;i<rainCount*3;i++) {
+                rainPos[i] = (Math.random() - 0.5) * 120;
+                rainPos[i+1] = Math.random() * 120 - 60;
+                rainPos[i+2] = (Math.random() - 0.5) * 120;
+            }
+            rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+            const rainMat = new THREE.PointsMaterial({ color: 0x87CEFA, size: 0.15, transparent: true, opacity: 0.8 });
+            rainParticles = new THREE.Points(rainGeo, rainMat);
+            rainParticles.visible = false;
+            scene.add(rainParticles);
+
+            // SNOW
+            const snowGeo = new THREE.BufferGeometry();
+            const snowCount = 6000;
+            const snowPos = new Float32Array(snowCount * 3);
+            for(let i=0;i<snowCount*3;i++) {
+                snowPos[i] = (Math.random() - 0.5) * 120;
+                snowPos[i+1] = Math.random() * 120 - 60;
+                snowPos[i+2] = (Math.random() - 0.5) * 120;
+            }
+            snowGeo.setAttribute('position', new THREE.BufferAttribute(snowPos, 3));
+            const snowMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.6, transparent: true, opacity: 0.9 });
+            snowParticles = new THREE.Points(snowGeo, snowMat);
+            snowParticles.visible = false;
+            scene.add(snowParticles);
+
+            // TORNADO
+            const tornadoGeo = new THREE.BufferGeometry();
+            const tornadoCount = 8000;
+            const tornadoPos = new Float32Array(tornadoCount * 3);
+            for(let i=0;i<tornadoCount;i++) {
+                const y = Math.random() * 120 - 60; // -60 to 60
+                // radius depends on height (funnel shape)
+                const radius = Math.pow((y + 60) / 120, 2) * 30 + 1; 
+                const theta = Math.random() * Math.PI * 2;
+                tornadoPos[i*3] = Math.cos(theta) * radius;
+                tornadoPos[i*3+1] = y;
+                tornadoPos[i*3+2] = Math.sin(theta) * radius;
+            }
+            tornadoGeo.setAttribute('position', new THREE.BufferAttribute(tornadoPos, 3));
+            const tornadoMat = new THREE.PointsMaterial({ color: 0x222222, size: 0.4, transparent: true, opacity: 0.8 });
+            tornadoParticles = new THREE.Points(tornadoGeo, tornadoMat);
+            tornadoParticles.visible = false;
+            scene.add(tornadoParticles);
+
+            // TSUNAMI (Animated water plane)
+            const tsunamiGeo = new THREE.PlaneGeometry(200, 200, 64, 64);
+            const tsunamiMat = new THREE.MeshStandardMaterial({ 
+                color: 0x002244, 
+                emissive: 0x001133,
+                roughness: 0.1,
+                metalness: 0.8,
+                wireframe: false,
+                side: THREE.DoubleSide
+            });
+            tsunamiMesh = new THREE.Mesh(tsunamiGeo, tsunamiMat);
+            tsunamiMesh.rotation.x = -Math.PI / 2;
+            tsunamiMesh.position.y = -80; // Hidden initially
+            scene.add(tsunamiMesh);
+
+            // SUN
+            const sunGeo = new THREE.SphereGeometry(12, 32, 32);
+            const sunMat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
+            sunMesh = new THREE.Mesh(sunGeo, sunMat);
+            sunMesh.position.set(30, 40, -50);
+            sunMesh.visible = false;
+            scene.add(sunMesh);
+
+            // STORM CLOUDS (Dark background plane that flashes)
+            const stormGeo = new THREE.PlaneGeometry(200, 200);
+            const stormMat = new THREE.MeshBasicMaterial({ color: 0x111122, transparent: true, opacity: 0 });
+            stormClouds = new THREE.Mesh(stormGeo, stormMat);
+            stormClouds.position.z = -60;
+            scene.add(stormClouds);
+
+            animateThree();
+        }
+
+        let flashTimer = 0;
+        function animateThree() {
+            requestAnimationFrame(animateThree);
+            const time = Date.now() * 0.001;
+
+            // RAIN
+            if(rainParticles.visible) {
+                const positions = rainParticles.geometry.attributes.position.array;
+                const speedY = currentEffect === 'hurricane' ? 4.0 : 2.0;
+                const speedX = currentEffect === 'hurricane' ? -3.0 : 0.0;
+                for(let i=0; i<15000*3; i+=3) {
+                    positions[i+1] -= speedY;
+                    positions[i] += speedX;
+                    if(positions[i+1] < -60) positions[i+1] = 60;
+                    if(positions[i] < -60) positions[i] = 60;
+                }
+                rainParticles.geometry.attributes.position.needsUpdate = true;
+            }
+
+            // SNOW
+            if(snowParticles.visible) {
+                const positions = snowParticles.geometry.attributes.position.array;
+                for(let i=0; i<6000*3; i+=3) {
+                    positions[i+1] -= 0.3;
+                    positions[i] += Math.sin(time + i)*0.05;
+                    if(positions[i+1] < -60) positions[i+1] = 60;
+                }
+                snowParticles.geometry.attributes.position.needsUpdate = true;
+            }
+
+            // TORNADO
+            if(tornadoParticles.visible) {
+                tornadoParticles.rotation.y -= 0.3; // Spin very fast
+                tornadoParticles.position.x = Math.sin(time) * 15; // Move left/right
+            }
+
+            // TSUNAMI
+            if(currentEffect === 'tsunami') {
+                tsunamiMesh.position.y += (0 - tsunamiMesh.position.y) * 0.02; // Rise to y=0 smoothly
+                const positions = tsunamiMesh.geometry.attributes.position.array;
+                for ( let i = 0; i < positions.length; i += 3 ) {
+                    // Make waves
+                    positions[i + 2] = Math.sin( (positions[i]/10) + time * 5 ) * 3 + Math.cos( (positions[i+1]/10) + time * 4 ) * 3;
+                }
+                tsunamiMesh.geometry.attributes.position.needsUpdate = true;
+            } else {
+                tsunamiMesh.position.y += (-80 - tsunamiMesh.position.y) * 0.05; // Drop down
+            }
+
+            // LIGHTNING
+            if(currentEffect === 'storm') {
+                stormClouds.material.opacity = 1.0;
+                if(Math.random() > 0.98 && flashTimer <= 0) {
+                    flashLight.intensity = 50;
+                    flashTimer = 10;
+                }
+                if(flashTimer > 0) {
+                    flashTimer--;
+                    flashLight.intensity *= 0.8;
+                } else {
+                    flashLight.intensity = 0;
+                }
+            } else {
+                stormClouds.material.opacity = 0;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Wait for page to load to start 3D
+        window.onload = initThree;
+
+
+        // --- UI & AUDIO ---
+        const icons = {
+            moon: `<svg viewBox="0 0 24 24" fill="white"><path d="M12.3 22.5c-5.8 0-10.5-4.7-10.5-10.5 0-4.6 3-8.6 7.4-10.1.3-.1.6.1.7.4.1.3 0 .6-.2.8-1.7 1.5-2.7 3.6-2.7 5.8 0 4.6 3.7 8.3 8.3 8.3 2.5 0 4.8-1.1 6.3-3 .2-.2.5-.3.8-.1.3.1.4.5.3.8-1.9 4.6-6 7.6-10.4 7.6z"/></svg>`,
+            sun: `<svg viewBox="0 0 24 24" fill="#FFD700"><circle cx="12" cy="12" r="5"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41m11.32-11.32l1.41-1.41" stroke="#FFD700" stroke-width="2" stroke-linecap="round"/></svg>`,
+            rain: `<svg viewBox="0 0 24 24" fill="white"><path d="M17.5 19h-11C3.5 19 1 16.5 1 13.5S3.5 8 6.5 8c.2 0 .4 0 .6.1 1.2-3 4-5.1 7.4-5.1 4.4 0 8 3.6 8 8 0 .4-.1.7-.1 1.1 2 .6 3.6 2.4 3.6 4.4 0 2.5-2 4.5-4.5 4.5z"/><path stroke="#87CEFA" stroke-width="2" stroke-linecap="round" d="M8 22l-1 3m4-3l-1 3m4-3l-1 3"/></svg>`,
+            snow: `<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07"/></svg>`,
+            storm: `<svg viewBox="0 0 24 24" fill="white"><path d="M17.5 17h-11C3.5 17 1 14.5 1 11.5S3.5 6 6.5 6c.2 0 .4 0 .6.1 1.2-3 4-5.1 7.4-5.1 4.4 0 8 3.6 8 8 0 .4-.1.7-.1 1.1 2 .6 3.6 2.4 3.6 4.4 0 1.9-1.2 3.5-3 4.1z"/><path fill="#FFD700" d="M13 14l-4 5h4l-2 5 6-7h-4z"/></svg>`,
+            wind: `<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/></svg>`
+        };
+
+        const phone = document.getElementById('phone');
+        const tempDisplay = document.getElementById('temp-display');
+        const condDisplay = document.getElementById('cond-display');
+        const highLowDisplay = document.getElementById('high-low-display');
+        const hourlyDesc = document.getElementById('hourly-desc');
+        
+        // Reliable Audio files from Wikimedia Commons
+        const sounds = {
+            clear: new Audio('https://upload.wikimedia.org/wikipedia/commons/7/77/Waves_on_the_beach.ogg'),
+            sunny: new Audio('https://upload.wikimedia.org/wikipedia/commons/7/77/Waves_on_the_beach.ogg'),
+            rain: new Audio('https://upload.wikimedia.org/wikipedia/commons/4/4b/Rain_-_Sound_Effect.ogg'),
+            snow: new Audio('https://upload.wikimedia.org/wikipedia/commons/1/14/Jingle_Bells_%28Kevin_MacLeod%29.ogg'),
+            storm: new Audio('https://upload.wikimedia.org/wikipedia/commons/3/36/Thunderstorm.ogg'),
+            wind: new Audio('https://upload.wikimedia.org/wikipedia/commons/3/39/Wind_sound.ogg'),
+            hurricane: new Audio('https://upload.wikimedia.org/wikipedia/commons/3/39/Wind_sound.ogg'),
+            tsunami: new Audio('https://upload.wikimedia.org/wikipedia/commons/f/ff/Water_splash.ogg'), // big splash
+            tornado: new Audio('https://upload.wikimedia.org/wikipedia/commons/3/39/Wind_sound.ogg')
+        };
+
+        Object.values(sounds).forEach(audio => { audio.loop = true; audio.volume = 0.6; });
+        let currentAudio = null;
+
+        // 3D UI perspective effect
+        phone.addEventListener('mousemove', (e) => {
+            const rect = phone.getBoundingClientRect();
+            const x = e.clientX - rect.left - rect.width / 2;
+            const y = e.clientY - rect.top - rect.height / 2;
+            phone.style.transform = `perspective(1000px) rotateY(${x / 30}deg) rotateX(${-y / 30}deg) translateZ(10px)`;
+        });
+        phone.addEventListener('mouseleave', () => { phone.style.transform = `perspective(1000px) rotateY(0deg) rotateX(0deg) translateZ(0)`; });
+
+        function animateNumber(obj, targetValue) {
+            let startValue = parseInt(obj.innerHTML);
+            if(isNaN(startValue)) return;
+            const duration = 1500;
+            const startTime = performance.now();
+            function step(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const ease = 1 - Math.pow(1 - progress, 4);
+                obj.innerHTML = Math.floor(startValue + (targetValue - startValue) * ease) + '&deg;';
+                if (progress < 1) requestAnimationFrame(step);
+            }
+            requestAnimationFrame(step);
+        }
+
+        function setWeather(type, btnElement) {
+            currentEffect = type;
+
+            // Audio Playback
+            if (currentAudio) { currentAudio.pause(); currentAudio.currentTime = 0; }
+            currentAudio = sounds[type];
+            if (currentAudio) {
+                // Hurricane and Tornado need louder wind
+                if(type === 'hurricane' || type === 'tornado') currentAudio.volume = 1.0;
+                else currentAudio.volume = 0.6;
+                currentAudio.play().catch(e => console.log("Audio play blocked", e));
+            }
+
+            // Buttons
+            document.querySelectorAll('.control-btn').forEach(btn => btn.classList.remove('active'));
+            if(btnElement) btnElement.classList.add('active');
+
+            // Reset 3D visibilities
+            rainParticles.visible = false;
+            snowParticles.visible = false;
+            tornadoParticles.visible = false;
+            sunMesh.visible = false;
+            phone.classList.remove('hurricane-shake');
+
+            // Switch Logic
+            if (type === 'clear') {
+                scene.background.setHex(0x1a2a40);
+                animateNumber(tempDisplay, 19);
+                condDisplay.textContent = 'Głównie bez chmur';
+                updateHourly([19, 19, 18, 17, 17, 16], 'moon');
+            } 
+            else if (type === 'sunny') {
+                scene.background.setHex(0x4a90e2);
+                sunMesh.visible = true;
+                animateNumber(tempDisplay, 28);
+                condDisplay.textContent = 'Słonecznie';
+                updateHourly([28, 29, 31, 32, 31, 28], 'sun');
+            }
+            else if (type === 'rain') {
+                scene.background.setHex(0x2d3b4f);
+                rainParticles.visible = true;
+                animateNumber(tempDisplay, 14);
+                condDisplay.textContent = 'Ulewa';
+                updateHourly([14, 14, 13, 13, 12, 12], 'rain');
+            } 
+            else if (type === 'snow') {
+                scene.background.setHex(0x8da0b3);
+                snowParticles.visible = true;
+                animateNumber(tempDisplay, -3);
+                condDisplay.textContent = 'Śnieżyca';
+                updateHourly([-3, -4, -5, -6, -6, -7], 'snow');
+            }
+            else if (type === 'storm') {
+                scene.background.setHex(0x111111);
+                rainParticles.visible = true;
+                animateNumber(tempDisplay, 16);
+                condDisplay.textContent = 'Burza z piorunami';
+                updateHourly([16, 15, 15, 16, 17, 17], 'storm');
+            }
+            else if (type === 'wind') {
+                scene.background.setHex(0x687787);
+                animateNumber(tempDisplay, 12);
+                condDisplay.textContent = 'Porywisty wiatr';
+                updateHourly([12, 11, 10, 10, 9, 9], 'wind');
+            }
+            else if (type === 'hurricane') {
+                scene.background.setHex(0x050505);
+                rainParticles.visible = true;
+                phone.classList.add('hurricane-shake');
+                animateNumber(tempDisplay, 18);
+                condDisplay.textContent = 'Huragan (Kat. 5)';
+                updateHourly([18, 17, 17, 16, 16, 15], 'storm');
+            }
+            else if (type === 'tsunami') {
+                scene.background.setHex(0x001a33);
+                animateNumber(tempDisplay, 22);
+                condDisplay.textContent = 'Uderzenie Tsunami';
+                updateHourly([22, 21, 21, 20, 20, 19], 'rain');
+            }
+            else if (type === 'tornado') {
+                scene.background.setHex(0x222222);
+                tornadoParticles.visible = true;
+                animateNumber(tempDisplay, 25);
+                condDisplay.textContent = 'Tornado';
+                updateHourly([25, 24, 22, 21, 20, 19], 'wind');
+            }
+        }
+
+        // Initialize UI
+        for(let i=1; i<=6; i++) document.getElementById('hour-icon-'+i).innerHTML = icons.moon;
+        for(let i=1; i<=3; i++) {
+            let el = document.getElementById('day-icon-'+i);
+            if(el) { let pop = el.innerHTML; el.innerHTML = icons.moon + pop; }
+        }
+
+        function updateHourly(temps, iconType) {
+            for(let i = 1; i <= 6; i++) {
+                let tempEl = document.getElementById('hour-temp-' + i);
+                if(tempEl) animateNumber(tempEl, temps[i-1]);
+                let iconContainer = document.getElementById('hour-icon-' + i);
+                iconContainer.innerHTML = icons[iconType] || icons.moon;
+            }
+            let bases = temps[0];
+            animateNumber(document.getElementById('day-low-1'), bases - 2);
+            animateNumber(document.getElementById('day-high-1'), bases + 5);
+            for(let i=1; i<=3; i++) {
+                let el = document.getElementById('day-icon-'+i);
+                if(el) {
+                    let pop = el.querySelector('.pop');
+                    el.innerHTML = (icons[iconType] || icons.moon);
+                    if(pop) el.appendChild(pop);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
