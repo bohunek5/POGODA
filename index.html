@@ -84,7 +84,7 @@
         }
         .tornado-spin { animation: tornadoSpin 1.5s infinite alternate ease-in-out; }
 
-        /* Weather Particles (Rain/Snow) */
+        /* Weather Particles (Rain/Snow/Light/Wind/Tsunami) */
         .weather-effects { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 1; pointer-events: none; overflow: hidden; }
 
         .raindrop {
@@ -113,6 +113,50 @@
         .lightning-flash {
             position: absolute; top: 0; left: 0; right: 0; bottom: 0;
             background: #fff; opacity: 0; z-index: 2; pointer-events: none;
+        }
+
+        /* Light Orbs (Clear/Sunny) */
+        .light-orb {
+            position: absolute; border-radius: 50%;
+            background: radial-gradient(circle, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0) 70%);
+            animation: floatOrb linear infinite alternate;
+        }
+        @keyframes floatOrb {
+            0% { transform: translate(0, 0) scale(1); opacity: 0.1; }
+            100% { transform: translate(40px, -60px) scale(1.8); opacity: 0.6; }
+        }
+
+        /* Wind & Leaves */
+        .leaf {
+            position: absolute; background: #8b5a2b;
+            border-radius: 50% 0 50% 0; animation: blowLeaf linear infinite;
+        }
+        @keyframes blowLeaf {
+            0% { transform: translate(-10vw, 110vh) rotate(0deg); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translate(120vw, -10vh) rotate(720deg); opacity: 0; }
+        }
+        .wind-streak {
+            position: absolute; border-radius: 50%;
+            background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.5), rgba(255,255,255,0));
+            animation: blowStreak linear infinite;
+        }
+        @keyframes blowStreak {
+            0% { transform: translateX(-50vw); opacity: 0;}
+            20% { opacity: 1; }
+            80% { opacity: 1; }
+            100% { transform: translateX(150vw); opacity: 0;}
+        }
+
+        /* Tsunami Waves */
+        .tsunami-bg-wave {
+            position: absolute; left: -100vh; width: 300vh; height: 300vh;
+            border-radius: 42%; animation: waveSpin infinite linear;
+        }
+        @keyframes waveSpin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
 
         /* --- CONTENT UI --- */
@@ -446,11 +490,13 @@
 
             // Dynamic logic
             if (type === 'clear') {
+                createLightOrbs(20);
                 animateNumber(document.getElementById('temp-display'), 22);
                 document.getElementById('cond-display').textContent = 'Czyste niebo';
                 updateHourly([22, 22, 21, 20, 19, 18], 'sun');
             } 
             else if (type === 'sunny') {
+                createLightOrbs(40);
                 animateNumber(document.getElementById('temp-display'), 28);
                 document.getElementById('cond-display').textContent = 'Słonecznie';
                 updateHourly([28, 29, 31, 32, 31, 28], 'sun');
@@ -475,30 +521,35 @@
             }
             else if (type === 'storm') {
                 createRain(250);
+                createWind(15);
                 lightningInterval = setInterval(createLightning, 3500);
                 animateNumber(document.getElementById('temp-display'), 16);
                 document.getElementById('cond-display').textContent = 'Burza z piorunami';
                 updateHourly([16, 15, 15, 16, 17, 17], 'storm');
             }
             else if (type === 'wind') {
+                createWind(40);
                 animateNumber(document.getElementById('temp-display'), 12);
                 document.getElementById('cond-display').textContent = 'Porywisty wiatr';
                 updateHourly([12, 11, 10, 10, 9, 9], 'wind');
             }
             else if (type === 'hurricane') {
                 createRain(300, 'hurricane-rain');
+                createWind(80, true);
                 phone.classList.add('extreme-shake');
                 animateNumber(document.getElementById('temp-display'), 18);
                 document.getElementById('cond-display').textContent = 'Huragan Kategoria 5';
                 updateHourly([18, 17, 17, 16, 16, 15], 'storm');
             }
             else if (type === 'tsunami') {
+                createTsunamiWaves();
                 phone.classList.add('extreme-shake'); // Shake while wave comes
                 animateNumber(document.getElementById('temp-display'), 22);
                 document.getElementById('cond-display').textContent = 'Zagrożenie Tsunami';
                 updateHourly([22, 21, 21, 20, 20, 19], 'rain');
             }
             else if (type === 'tornado') {
+                createWind(120, true);
                 bg1.classList.add('tornado-spin');
                 bg2.classList.add('tornado-spin');
                 phone.classList.add('extreme-shake');
@@ -547,6 +598,64 @@
             setTimeout(() => flash.style.opacity = '0.9', 150);
             setTimeout(() => flash.style.opacity = '0', 200);
             setTimeout(() => flash.remove(), 400);
+        }
+
+        function createLightOrbs(amount) {
+            for (let i = 0; i < amount; i++) {
+                let orb = document.createElement('div');
+                orb.className = 'light-orb';
+                orb.style.left = (Math.random() * 100) + '%';
+                orb.style.top = (Math.random() * 100) + '%';
+                let size = Math.random() * 12 + 4; 
+                orb.style.width = size + 'px'; orb.style.height = size + 'px';
+                orb.style.animationDelay = (Math.random() * 5) + 's';
+                orb.style.animationDuration = (Math.random() * 4 + 4) + 's';
+                effectContainer.appendChild(orb);
+            }
+        }
+
+        function createWind(amount, isHurricane = false) {
+            for (let i = 0; i < amount; i++) {
+                // Streaks
+                let streak = document.createElement('div');
+                streak.className = 'wind-streak';
+                streak.style.top = (Math.random() * 100) + '%';
+                streak.style.left = '-50%';
+                let width = Math.random() * 300 + 100;
+                streak.style.width = width + 'px'; streak.style.height = (Math.random() * 2 + 1) + 'px';
+                streak.style.animationDelay = (Math.random() * 3) + 's';
+                streak.style.animationDuration = (isHurricane ? Math.random() * 0.5 + 0.3 : Math.random() * 1.5 + 1) + 's';
+                effectContainer.appendChild(streak);
+                
+                // Leaves/Debris
+                if (Math.random() > 0.4) {
+                    let leaf = document.createElement('div');
+                    leaf.className = 'leaf';
+                    leaf.style.left = '-20%';
+                    leaf.style.top = (Math.random() * 100) + '%';
+                    let size = Math.random() * 8 + 6; 
+                    leaf.style.width = size + 'px'; leaf.style.height = size + 'px';
+                    if (isHurricane) leaf.style.background = Math.random() > 0.5 ? '#555' : '#444'; // debris
+                    leaf.style.animationDelay = (Math.random() * 5) + 's';
+                    leaf.style.animationDuration = (isHurricane ? Math.random() * 1 + 0.5 : Math.random() * 3 + 2) + 's';
+                    effectContainer.appendChild(leaf);
+                }
+            }
+        }
+
+        function createTsunamiWaves() {
+            let colors = ['rgba(20, 60, 90, 0.4)', 'rgba(10, 40, 70, 0.6)', 'rgba(5, 20, 40, 0.8)'];
+            let bottoms = ['-140%', '-150%', '-160%'];
+            let durations = ['12s', '16s', '20s'];
+            for (let i = 0; i < 3; i++) {
+                let wave = document.createElement('div');
+                wave.className = 'tsunami-bg-wave';
+                wave.style.bottom = bottoms[i];
+                wave.style.background = colors[i];
+                wave.style.animationDuration = durations[i];
+                if (i % 2 === 1) wave.style.animationDirection = 'reverse';
+                effectContainer.appendChild(wave);
+            }
         }
 
         function updateHourly(temps, iconType) {
