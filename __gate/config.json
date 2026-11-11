@@ -1,0 +1,1 @@
+{"version":1,"format":"sealed-pages-v1","build":"62a538b675d73177bae0e99e9d8dc543","basepath":"/POGODA/","cipher":"AES-256-GCM","kdf":"PBKDF2","hash":"SHA-256","iterations":600000,"salt":"enQbi27jGCIEzvLoOpxAstp4HiPLsz8q4N5G4CN8JMM=","manifest":"9a6cd011627d3b307ff71622c67617a3ca417d27d33fbb1f33013bafc7b4927e","chunkSize":4194304}
